@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { bookSchema, emptyBook } from "@/lib/wordbook";
+import {
+  bookSchema,
+  emptyBook,
+  fitBookStorage,
+  BOOK_BYTE_LIMIT,
+} from "@/lib/wordbook";
 import {
   database,
   userId,
@@ -48,10 +53,14 @@ export async function PUT(req: Request) {
         { error: parsed.error.issues[0]?.message ?? "词条格式不正确" },
         400,
       );
-    const { book, version } = parsed.data;
-    if (new TextEncoder().encode(JSON.stringify(book)).length > 1500000)
+    const { version } = parsed.data;
+    const { book, bytes, trimmed } = fitBookStorage(parsed.data.book);
+    if (bytes > BOOK_BYTE_LIMIT)
       return response(
-        { error: "单词本数据超过 1.5 MB，请精简长笔记或先导出备份。" },
+        {
+          error:
+            "词库内容超过 1.5 MB，请导出备份后精简词条、例句或笔记。已保存的数据未改变。",
+        },
         413,
       );
     const saved = await database()
@@ -65,7 +74,7 @@ export async function PUT(req: Request) {
         { error: "单词本已在其他页面更新，请重新加载后再保存。" },
         409,
       );
-    return response({ book, version: saved.version });
+    return response({ book, version: saved.version, historyTrimmed: trimmed });
   } catch (e) {
     if (e instanceof SyntaxError)
       return response({ error: "无效的 JSON 数据" }, 400);

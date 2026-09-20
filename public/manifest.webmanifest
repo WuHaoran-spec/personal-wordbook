@@ -2,7 +2,7 @@
   "name": "个性单词本",
   "short_name": "单词本",
   "lang": "zh-CN",
-  "description": "PDF 词汇导入、词缀整理与间隔复习",
+  "description": "PDF 词汇导入、考试分类、词缀整理与复习记录",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

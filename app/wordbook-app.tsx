@@ -81,18 +81,32 @@ import {
   emptyBook,
   extractCandidates,
   mergeWords,
+  mergeBackup,
   newWord,
   normalizeWord,
   reviewWord,
+  reviewPlan,
+  matchesLevel,
+  addLevels,
+  levelLabels,
   wordPattern,
   type Book,
   type Word,
   type Candidate,
   type Grade,
+  type ExamLevel,
 } from "@/lib/wordbook";
 import type { LookupResult } from "@/lib/youdao";
+import {
+  LevelPicker,
+  LevelFilter,
+  LevelTags,
+  LastReview,
+  ReviewRecord,
+  ForgettingCurve,
+} from "./study-panels";
 
-type Modal = "word" | "folder" | "import" | null;
+type Modal = "word" | "folder" | "import" | "levels" | null;
 type LookupState = {
   word: string;
   loading?: boolean;
@@ -180,7 +194,7 @@ function SideNav({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <div className="nav-label">我的学习空间</div>
+        <div className="nav-label">词库与复习</div>
         {[
           { id: "words", label: "全部单词", icon: BookOpen, count: counts.all },
           {
@@ -189,7 +203,7 @@ function SideNav({
             icon: RotateCcw,
             count: counts.due,
           },
-          { id: "affixes", label: "词缀发现", icon: Layers },
+          { id: "affixes", label: "词缀分类", icon: Layers },
           { id: "starred", label: "我的收藏", icon: Star },
         ].map(({ id, label, icon: Icon, count }) => (
           <button
@@ -237,7 +251,7 @@ function SideNav({
           <Settings size={18} />
           设置与数据
         </button>
-        <div className="sidebar-note">每一个词，都是新的可能。</div>
+        <div className="sidebar-note">个性单词本 · 开源版</div>
       </SidebarFooter>
     </Sidebar>
   );
@@ -279,6 +293,10 @@ export default function WordbookApp() {
   const [selected, setSelected] = useState("demo-serendipity");
   const [limit, setLimit] = useState(40);
   const [affixFilter, setAffixFilter] = useState("");
+  const [levelFilter, setLevelFilter] = useState("");
+  const [importLevels, setImportLevels] = useState<ExamLevel[]>([]);
+  const [bulkLevels, setBulkLevels] = useState<ExamLevel[]>([]);
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
   const [modal, setModal] = useState<Modal>(null);
   const [settings, setSettings] = useState(false);
   const [editing, setEditing] = useState<Word | null>(null);
@@ -362,6 +380,7 @@ export default function WordbookApp() {
           error: string;
           book: Book;
           version: number;
+          historyTrimmed?: number;
           youdao: { configured: boolean; mode: string };
         };
         if (!r.ok) {
@@ -371,6 +390,11 @@ export default function WordbookApp() {
         setBook(d.book);
         setVersion(d.version);
         setClock(Date.now());
+        if (d.historyTrimmed)
+          toast.info(
+            "已保存。为腾出空间，已精简最旧的复习明细；累计次数、上次复习时间和下次安排均保留。",
+            { duration: 8000 },
+          );
         return true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "保存失败");
@@ -394,11 +418,12 @@ export default function WordbookApp() {
     ...new Set(displayed.flatMap((w) => analyses.get(w.id)?.confirmed ?? [])),
   ];
   const due = book.words
-    .filter((w) => w.dueAt <= clock)
+    .filter((w) => w.dueAt <= clock && matchesLevel(w, levelFilter))
     .sort((a, b) => a.dueAt - b.dueAt);
   const filtered = displayed.filter(
     (w) =>
       (!folder || w.folderIds.includes(folder)) &&
+      matchesLevel(w, levelFilter) &&
       (view !== "starred" || w.starred) &&
       (!affixFilter || analyses.get(w.id)?.confirmed.includes(affixFilter)) &&
       (!search ||
@@ -417,13 +442,16 @@ export default function WordbookApp() {
       words: "全部单词",
       starred: "我的收藏",
       review: "今日复习",
-      affixes: "词缀发现",
+      affixes: "词缀分类",
     }[view] ??
     "全部单词";
   useEffect(() => {
     setLimit(40);
     setAffixFilter("");
   }, [folder, view, search]);
+  useEffect(() => {
+    setLimit(40);
+  }, [levelFilter]);
   useEffect(() => {
     setLookup(null);
     if (!activeKey || !signedIn || !youdao.configured) return;
@@ -487,7 +515,14 @@ export default function WordbookApp() {
   }, [draft.text, modal, youdao.configured, signedIn]);
   const openAdd = () => {
     setEditing(null);
-    setDraft(newWord("", folder || book.folders[0].id));
+    setDraft(
+      newWord("", folder || book.folders[0].id, {
+        levels:
+          levelFilter && levelFilter !== "unclassified"
+            ? [levelFilter as ExamLevel]
+            : [],
+      }),
+    );
     setModal("word");
   };
   const openEdit = (word: Word) => {
@@ -517,6 +552,7 @@ export default function WordbookApp() {
       phrases: w.phrases,
       note: w.note,
       folderIds: w.folderIds,
+      levels: w.levels,
     });
     const current = editing
       ? book.words.find((w) => w.id === editing.id)
@@ -544,6 +580,7 @@ export default function WordbookApp() {
       setSelected(word.id);
       setSearch("");
       setView("words");
+      if (!matchesLevel(word, levelFilter)) setLevelFilter("");
       if (folder && !word.folderIds.includes(folder)) setFolder("");
       setModal(null);
       toast.success(editing ? "词条已更新" : "已加入单词本");
@@ -614,13 +651,14 @@ export default function WordbookApp() {
   async function importWords() {
     const chosen = candidates.filter((c) => c.selected);
     try {
-      const next = mergeWords(book, chosen, importFolder);
+      const next = mergeWords(book, chosen, importFolder, importLevels);
       const added = next.words.length - book.words.length;
       if (await save(next)) {
         setModal(null);
         setFolder(importFolder);
         setSearch("");
         setView("words");
+        setLevelFilter("");
         toast.success(`新增 ${added} 个单词，已有词条保留原笔记与复习进度。`);
       }
     } catch (e) {
@@ -633,36 +671,11 @@ export default function WordbookApp() {
       if (file.size > 16 * 1024 * 1024) throw new Error("备份请小于 16 MB");
       const raw = JSON.parse(await file.text());
       const backup = bookSchema.parse(raw.book ?? raw);
-      let next: Book = {
-        folders: [...book.folders],
-        words: book.words.map((w) => ({ ...w, folderIds: [...w.folderIds] })),
-      };
-      const mapping = new Map<string, string>();
-      for (const f of backup.folders) {
-        let target = next.folders.find((x) => x.name === f.name);
-        if (!target) {
-          target = { id: crypto.randomUUID(), name: f.name };
-          next.folders.push(target);
-        }
-        mapping.set(f.id, target.id);
-      }
-      for (const w of backup.words) {
-        const existing = next.words.find(
-          (x) => normalizeWord(x.text) === normalizeWord(w.text),
+      const next = mergeBackup(book, backup);
+      if (await save(next))
+        toast.success(
+          "备份已合并；同名词仅合并文件夹和分类，保留当前内容与复习记录。",
         );
-        const folders = w.folderIds.map((f) => mapping.get(f)!);
-        if (existing)
-          existing.folderIds = [
-            ...new Set([...existing.folderIds, ...folders]),
-          ];
-        else
-          next.words.push({
-            ...w,
-            id: crypto.randomUUID(),
-            folderIds: folders,
-          });
-      }
-      if (await save(next)) toast.success("备份已合并，已有词条保留原内容。");
     } catch {
       toast.error("无法读取备份，请选择本应用导出的有效 JSON 文件。");
     }
@@ -691,58 +704,6 @@ export default function WordbookApp() {
       setClock(Date.now());
     }
   }
-  const toolState = useRef({ displayed, book, setSearch, setView, setFolder });
-  toolState.current = { displayed, book, setSearch, setView, setFolder };
-  useEffect(() => {
-    const ctx = (
-      document as Document & {
-        modelContext?: {
-          registerTool: (
-            tool: unknown,
-            options: { signal: AbortSignal },
-          ) => unknown;
-        };
-      }
-    ).modelContext;
-    if (!ctx?.registerTool) return;
-    const controller = new AbortController();
-    const tools = [
-      {
-        name: "search_wordbook",
-        description:
-          "Search saved words and update the visible vocabulary list. Does not create or modify words.",
-        inputSchema: {
-          type: "object",
-          properties: { query: { type: "string", maxLength: 100 } },
-          required: ["query"],
-          additionalProperties: false,
-        },
-        annotations: { readOnlyHint: false, untrustedContentHint: true },
-        execute: (input: unknown) => {
-          const value = input as { query?: unknown };
-          if (typeof value?.query !== "string" || value.query.length > 100)
-            throw new Error("query must be a string of at most 100 characters");
-          const s = toolState.current;
-          s.setView("words");
-          s.setFolder("");
-          s.setSearch(value.query);
-          return {
-            words: s.displayed
-              .filter((w) => w.text.includes(String(value.query).toLowerCase()))
-              .map((w) => ({ word: w.text, definition: w.definition }))
-              .slice(0, 50),
-          };
-        },
-      },
-    ];
-    for (const t of tools)
-      try {
-        Promise.resolve(
-          ctx.registerTool(t, { signal: controller.signal }),
-        ).catch(() => {});
-      } catch {}
-    return () => controller.abort();
-  }, []);
   return (
     <SidebarProvider>
       <Toaster position="top-center" richColors theme="light" />
@@ -783,18 +744,13 @@ export default function WordbookApp() {
         <div className="page-content">
           <div className="page-heading">
             <div>
-              <p className="eyebrow">YOUR WORDS, YOUR WORLD</p>
-              <h1>
-                {view === "review"
-                  ? "每一次重逢，都记得更牢。"
-                  : view === "affixes"
-                    ? "找到单词之间的联系。"
-                    : "把遇见的单词，变成自己的。"}
-              </h1>
+              <h1>{heading}</h1>
               <p className="muted">
                 {view === "affixes"
-                  ? "按已确认的前缀与后缀归类，从一个词联想到更多。"
-                  : "收集、理解、记住。让词汇在这里慢慢生长。"}
+                  ? "按已确认的前缀、后缀查看单词。"
+                  : view === "review"
+                    ? "按到期时间复习，记录每次的记忆情况。"
+                    : "整理词汇、标记考试分类，按计划复习。"}
               </p>
             </div>
             <div className="actions">
@@ -802,6 +758,11 @@ export default function WordbookApp() {
                 className="button secondary"
                 onClick={() => {
                   setImportFolder(folder || book.folders[0].id);
+                  setImportLevels(
+                    levelFilter && levelFilter !== "unclassified"
+                      ? [levelFilter as ExamLevel]
+                      : [],
+                  );
                   setModal("import");
                 }}
               >
@@ -878,119 +839,149 @@ export default function WordbookApp() {
               </button>
             </div>
           )}
+          <LevelFilter
+            value={levelFilter}
+            words={
+              view === "review"
+                ? book.words
+                : displayed.filter(
+                    (w) =>
+                      (!folder || w.folderIds.includes(folder)) &&
+                      (view !== "starred" || w.starred),
+                  )
+            }
+            onChange={(value) => {
+              setLevelFilter(value);
+              setReviewIds(null);
+              setRevealed(false);
+            }}
+          />
           {view === "review" ? (
-            <section className="review-panel">
-              {reviewIds === null ? (
-                <>
-                  <div className="review-icon">
-                    <RotateCcw size={32} />
-                  </div>
-                  <h2>
-                    {due.length
-                      ? `今天有 ${due.length} 个单词等你复习`
-                      : "今天的复习已完成"}
-                  </h2>
-                  <p className="muted">
-                    先回忆释义，再翻开卡片。根据记忆情况安排下次复习。
-                  </p>
-                  <button
-                    className="button primary"
-                    onClick={startReview}
-                    disabled={!due.length || busy}
-                  >
-                    开始复习
-                    <ArrowRight size={17} />
-                  </button>
-                  <p className="fine-print">
-                    新词立即进入复习；记住后按 1、3、7、14、30、60 天逐步安排。
-                  </p>
-                </>
-              ) : review ? (
-                <>
-                  <div className="review-progress">
-                    {reviewTotal - (reviewIds?.length ?? 0) + 1} / {reviewTotal}
+            <>
+              <section className="review-panel">
+                {reviewIds === null ? (
+                  <>
+                    <div className="review-icon">
+                      <RotateCcw size={32} />
+                    </div>
+                    <h2>
+                      {due.length
+                        ? `当前分类有 ${due.length} 个待复习单词`
+                        : "当前分类暂无到期单词"}
+                    </h2>
+                    <p className="muted">
+                      先回忆释义，再翻开卡片。根据记忆情况安排下次复习。
+                    </p>
                     <button
-                      className="button secondary"
+                      className="button primary"
+                      onClick={startReview}
+                      disabled={!due.length || busy}
+                    >
+                      开始复习
+                      <ArrowRight size={17} />
+                    </button>
+                    <p className="fine-print">
+                      新词立即进入复习；记住后按 1、3、7、14、30、60
+                      天逐步安排。
+                    </p>
+                  </>
+                ) : review ? (
+                  <>
+                    <div className="review-progress">
+                      {reviewTotal - (reviewIds?.length ?? 0) + 1} /{" "}
+                      {reviewTotal}
+                      <button
+                        className="button secondary"
+                        onClick={() => setReviewIds(null)}
+                      >
+                        结束本轮
+                      </button>
+                    </div>
+                    <h2 className="review-word">{review.text}</h2>
+                    <LevelTags word={review} />
+                    <p className="review-last">
+                      <LastReview word={review} now={clock} />
+                    </p>
+                    <button
+                      className="icon-button"
+                      onClick={() => speak(review.text)}
+                      aria-label="朗读复习单词"
+                    >
+                      <Volume2 />
+                    </button>
+                    {revealed ? (
+                      <>
+                        <p className="review-definition">
+                          {review.definition ||
+                            "还没有自己的释义，可以在有道查词后补充手记。"}
+                        </p>
+                        {review.example && (
+                          <p className="review-example">{review.example}</p>
+                        )}
+                        {review.note && <p className="muted">{review.note}</p>}
+                        <a
+                          className="youdao-link"
+                          target="_blank"
+                          rel="noreferrer"
+                          href={youdaoUrl(review.text)}
+                        >
+                          有道查词
+                          <ArrowUpRight size={16} />
+                        </a>
+                        <div className="grade-buttons">
+                          {(
+                            [
+                              ["again", "忘了", "10 分钟后"],
+                              ["hard", "有点难", "缩短间隔"],
+                              ["good", "记住了", "进入下一级"],
+                              ["easy", "很熟悉", "前进两级"],
+                            ] as const
+                          ).map(([g, label]) => (
+                            <button
+                              key={g}
+                              disabled={busy}
+                              onClick={() => void grade(g)}
+                              className={`grade grade-${g}`}
+                            >
+                              <strong>{label}</strong>
+                              <span>
+                                {reviewPlan(review, g).delay < 86400000
+                                  ? `${reviewPlan(review, g).delay / 60000} 分钟后`
+                                  : `${reviewPlan(review, g).delay / 86400000} 天后`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        className="button primary reveal"
+                        onClick={() => setRevealed(true)}
+                      >
+                        查看答案
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="review-icon">
+                      <Check size={34} />
+                    </div>
+                    <h2>本轮复习完成</h2>
+                    <p className="muted">
+                      你的复习进度已保存。忘记的单词将在 10 分钟后再次出现。
+                    </p>
+                    <button
+                      className="button primary"
                       onClick={() => setReviewIds(null)}
                     >
-                      结束本轮
+                      返回今日复习
                     </button>
-                  </div>
-                  <h2 className="review-word">{review.text}</h2>
-                  <button
-                    className="icon-button"
-                    onClick={() => speak(review.text)}
-                    aria-label="朗读复习单词"
-                  >
-                    <Volume2 />
-                  </button>
-                  {revealed ? (
-                    <>
-                      <p className="review-definition">
-                        {review.definition ||
-                          "还没有自己的释义，可以在有道查词后补充手记。"}
-                      </p>
-                      {review.example && (
-                        <p className="review-example">{review.example}</p>
-                      )}
-                      {review.note && <p className="muted">{review.note}</p>}
-                      <a
-                        className="youdao-link"
-                        target="_blank"
-                        rel="noreferrer"
-                        href={youdaoUrl(review.text)}
-                      >
-                        有道查词
-                        <ArrowUpRight size={16} />
-                      </a>
-                      <div className="grade-buttons">
-                        {(
-                          [
-                            ["again", "忘了", "10 分钟后"],
-                            ["hard", "有点难", "缩短间隔"],
-                            ["good", "记住了", "进入下一级"],
-                            ["easy", "很熟悉", "前进两级"],
-                          ] as const
-                        ).map(([g, label, detail]) => (
-                          <button
-                            key={g}
-                            disabled={busy}
-                            onClick={() => void grade(g)}
-                            className={`grade grade-${g}`}
-                          >
-                            <strong>{label}</strong>
-                            <span>{detail}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <button
-                      className="button primary reveal"
-                      onClick={() => setRevealed(true)}
-                    >
-                      查看答案
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="review-icon">
-                    <Check size={34} />
-                  </div>
-                  <h2>这一轮，完成了。</h2>
-                  <p className="muted">
-                    你的复习进度已保存。忘记的单词将在 10 分钟后再次出现。
-                  </p>
-                  <button
-                    className="button primary"
-                    onClick={() => setReviewIds(null)}
-                  >
-                    返回今日复习
-                  </button>
-                </>
-              )}
-            </section>
+                  </>
+                )}
+              </section>
+              <ForgettingCurve />
+            </>
           ) : (
             <>
               {view === "affixes" && (
@@ -1116,6 +1107,24 @@ export default function WordbookApp() {
                       </button>
                     )}
                   </div>
+                  {!demo && filtered.length > 0 && (
+                    <div className="bulk-toolbar">
+                      <span className="muted">
+                        当前筛选 {filtered.length} 个词
+                      </span>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => {
+                          setBulkIds(filtered.map((w) => w.id));
+                          setBulkLevels([]);
+                          setModal("levels");
+                        }}
+                      >
+                        批量添加分类
+                      </button>
+                    </div>
+                  )}
                   {loading ? (
                     <div className="loading-row">
                       <Loader2 className="spin" />
@@ -1144,6 +1153,7 @@ export default function WordbookApp() {
                               )}
                             </strong>
                             <p>{w.definition || "待补充释义"}</p>
+                            <LevelTags word={w} />
                           </div>
                           <span className="folder-tag">
                             {book.folders.find((f) => f.id === w.folderIds[0])
@@ -1308,7 +1318,9 @@ export default function WordbookApp() {
                         </div>
                       )}
                       <div className="detail-divider" />
-                      <h3>在语境中记住</h3>
+                      <h3>考试分类</h3>
+                      <LevelTags word={active} />
+                      <h3>例句</h3>
                       {active.example ? (
                         <div className="example">
                           <p>{active.example}</p>
@@ -1316,7 +1328,7 @@ export default function WordbookApp() {
                         </div>
                       ) : (
                         <p className="muted">
-                          写一个与你有关的例句，会更容易记住。
+                          暂未添加例句，编辑词条即可补充。
                         </p>
                       )}
                       <h3>短语与搭配</h3>
@@ -1340,15 +1352,7 @@ export default function WordbookApp() {
                           示例释义与例句为本项目原创学习素材。
                         </p>
                       ) : (
-                        <p className="fine-print">
-                          复习 {active.reviews} 次 · 下次{" "}
-                          {new Date(active.dueAt).toLocaleString("zh-CN", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                        <ReviewRecord word={active} now={clock} />
                       )}
                     </>
                   ) : (
@@ -1364,6 +1368,38 @@ export default function WordbookApp() {
         </div>
       </main>
       <Dialog
+        open={modal === "levels"}
+        onOpenChange={(open) => !open && setModal(null)}
+      >
+        <DialogContent className="word-modal">
+          <DialogHeader>
+            <DialogTitle>批量添加考试分类</DialogTitle>
+            <DialogDescription>
+              为已选定的 {bulkIds.length}{" "}
+              个词添加分类，保留已有分类和复习记录。包含当前筛选的所有分页。
+            </DialogDescription>
+          </DialogHeader>
+          <LevelPicker value={bulkLevels} onChange={setBulkLevels} />
+          <button
+            className="button primary"
+            disabled={busy || !bulkLevels.length || !signedIn}
+            onClick={async () => {
+              if (
+                await save({
+                  ...book,
+                  words: addLevels(book.words, bulkIds, bulkLevels),
+                })
+              ) {
+                setModal(null);
+                toast.success("分类已添加");
+              }
+            }}
+          >
+            保存分类
+          </button>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={modal === "word"}
         onOpenChange={(o) => {
           if (!o && !busy) setModal(null);
@@ -1371,9 +1407,9 @@ export default function WordbookApp() {
       >
         <DialogContent className="word-modal">
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑单词" : "收集一个新单词"}</DialogTitle>
+            <DialogTitle>{editing ? "编辑单词" : "添加单词"}</DialogTitle>
             <DialogDescription>
-              写下自己的理解，放进合适的文件夹。
+              填写词义、例句，选择文件夹与考试分类。
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={submitWord} className="word-form">
@@ -1403,7 +1439,7 @@ export default function WordbookApp() {
                 onChange={(e) =>
                   setDraft({ ...draft, definition: e.target.value })
                 }
-                placeholder="用自己的话记下词义…"
+                placeholder="例如 n. 苹果"
                 rows={2}
               />
             </label>
@@ -1417,7 +1453,7 @@ export default function WordbookApp() {
                     setDraft({ ...draft, example: e.target.value })
                   }
                   rows={2}
-                  placeholder="A sentence that matters to you."
+                  placeholder="英文例句"
                 />
               </label>
               <label>
@@ -1429,7 +1465,7 @@ export default function WordbookApp() {
                     setDraft({ ...draft, translation: e.target.value })
                   }
                   rows={2}
-                  placeholder="记下你对例句的理解"
+                  placeholder="例句的中文翻译"
                 />
               </label>
             </div>
@@ -1452,7 +1488,7 @@ export default function WordbookApp() {
                 value={draft.note}
                 onChange={(e) => setDraft({ ...draft, note: e.target.value })}
                 rows={2}
-                placeholder="在哪里遇见这个词？有什么记忆方法？"
+                placeholder="词义辨析、来源或记忆方法"
               />
             </label>
             <div>
@@ -1476,6 +1512,10 @@ export default function WordbookApp() {
                 ))}
               </div>
             </div>
+            <LevelPicker
+              value={draft.levels}
+              onChange={(levels) => setDraft({ ...draft, levels })}
+            />
             <div className="form-footer">
               <span className="muted">有道查询结果仅实时展示</span>
               <button
@@ -1574,12 +1614,14 @@ export default function WordbookApp() {
               className="paste-input"
               aria-label="粘贴词汇文本"
               value={importText}
+              disabled={importBusy}
               maxLength={500000}
               onChange={(e) => setImportText(e.target.value)}
               placeholder={"apple 苹果\nunforgettable 难忘的"}
             />
             <button
               className="button secondary"
+              disabled={importBusy}
               onClick={() => {
                 const p = [importText];
                 setPages(p);
@@ -1596,8 +1638,12 @@ export default function WordbookApp() {
             onValueChange={(v) => switchImportMode(v as "entries" | "article")}
           >
             <TabsList>
-              <TabsTrigger value="entries">词汇表模式</TabsTrigger>
-              <TabsTrigger value="article">文章提词模式</TabsTrigger>
+              <TabsTrigger value="entries" disabled={importBusy}>
+                词汇表模式
+              </TabsTrigger>
+              <TabsTrigger value="article" disabled={importBusy}>
+                文章提词模式
+              </TabsTrigger>
             </TabsList>
           </Tabs>
           <p className="muted">
@@ -1689,6 +1735,14 @@ export default function WordbookApp() {
               book={book}
             />
           </div>
+          <LevelPicker
+            value={importLevels}
+            onChange={setImportLevels}
+            label="为所选词汇添加考试分类（可选）"
+          />
+          <p className="fine-print">
+            分类依据你使用的词表，由你选择；已有词会合并分类。这些标签不代表官方完整考试词库。
+          </p>
           <button
             className="button primary"
             disabled={
@@ -1712,7 +1766,7 @@ export default function WordbookApp() {
         <SheetContent className="settings-sheet">
           <SheetHeader>
             <SheetTitle>设置与数据</SheetTitle>
-            <SheetDescription>你的单词本，由你掌握。</SheetDescription>
+            <SheetDescription>备份词库、恢复数据与查询设置。</SheetDescription>
           </SheetHeader>
           <div className="settings-body">
             <h3>备份与迁移</h3>
@@ -1727,7 +1781,7 @@ export default function WordbookApp() {
                   JSON.stringify(
                     {
                       format: "personal-wordbook",
-                      schemaVersion: 1,
+                      schemaVersion: 2,
                       exportedAt: new Date().toISOString(),
                       book,
                     },
@@ -1758,6 +1812,10 @@ export default function WordbookApp() {
                     "phrases",
                     "note",
                     "folders",
+                    "examLevels",
+                    "lastReviewedAt",
+                    "nextReviewAt",
+                    "reviewCount",
                   ],
                   ...book.words.map((w) => [
                     w.text,
@@ -1772,6 +1830,12 @@ export default function WordbookApp() {
                           book.folders.find((f) => f.id === id)?.name ?? "",
                       )
                       .join(" / "),
+                    w.levels.map((level) => levelLabels[level]).join(" / "),
+                    w.lastReviewedAt !== null
+                      ? new Date(w.lastReviewedAt).toISOString()
+                      : "",
+                    new Date(w.dueAt).toISOString(),
+                    String(w.reviews),
                   ]),
                 ];
                 download(
@@ -1799,7 +1863,7 @@ export default function WordbookApp() {
               />
             </label>
             <p className="fine-print">
-              合并时不会覆盖已有单词的笔记和复习进度。请定期保存自己的备份。
+              同名单词仅合并文件夹和考试分类，保留当前笔记与复习记录；备份中的较新复习进度也不会覆盖当前记录。新词完整导入。
             </p>
             <h3>有道查词</h3>
             <div className="connection-status">

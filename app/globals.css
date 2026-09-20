@@ -1092,6 +1092,234 @@ h2 {
 .reveal {
   margin: 25px;
 }
+.level-filter {
+  background: #fff;
+  border: 1px solid #dfe9e4;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 22px;
+}
+.level-filter-heading,
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+.level-filter-heading span {
+  color: #63756d;
+  font-size: 12px;
+}
+.level-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+.level-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #dfe9e4;
+  border-radius: 7px;
+  padding: 7px 12px;
+  background: #fafcfb;
+  font-size: 13px;
+  color: #455f52;
+}
+.level-tabs button.selected {
+  background: #e5f2eb;
+  border-color: #639980;
+  color: #225c41;
+}
+.level-tabs button span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.level-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.level-tags span {
+  color: #326b57;
+  background: #edf5f0;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 400;
+}
+.level-tags .unclassified {
+  color: #6c7c74;
+  background: #f1f4f2;
+}
+.word-row .level-tags {
+  margin-top: 6px;
+}
+.bulk-toolbar {
+  padding: 4px 20px 14px;
+}
+.level-picker {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.level-picker legend {
+  margin-bottom: 10px;
+}
+.review-last {
+  font-size: 13px;
+  color: #566e61;
+  line-height: 1.8;
+}
+.review-record {
+  margin-top: 24px;
+  border-top: 1px solid #e0e8e3;
+  padding-top: 4px;
+  font-size: 12px;
+}
+.review-record p {
+  margin-bottom: 10px;
+  line-height: 1.8;
+}
+.due-label {
+  display: inline-block;
+  margin-left: 8px;
+  color: #975b32;
+  font-weight: 500;
+}
+.interval-track {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  padding: 0;
+  margin: 14px 0;
+  list-style: none;
+}
+.interval-track li {
+  font-size: 10px;
+  text-align: center;
+  padding: 6px 0;
+  border-radius: 4px;
+  background: #f0f4f1;
+  color: #5b7264;
+}
+.interval-track li.current {
+  background: #28684e;
+  color: #fff;
+}
+.review-history summary {
+  cursor: pointer;
+  padding: 7px 0;
+  color: #37654e;
+}
+.review-history ol {
+  list-style: none;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.review-history li {
+  border-top: 1px solid #edf1ee;
+  padding: 10px 0;
+}
+.review-history li div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.review-history strong {
+  font-weight: 500;
+}
+.review-history small {
+  display: block;
+  margin-top: 3px;
+  color: #65746b;
+}
+.forgetting-curve {
+  background: #fff;
+  border: 1px solid #dfe9e4;
+  border-radius: 14px;
+  padding: 24px;
+  margin-top: 22px;
+}
+.forgetting-curve h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.forgetting-curve .section-heading {
+  padding: 0 0 12px;
+  gap: 12px;
+}
+.curve-caption {
+  font-size: 12px;
+  color: #68796d;
+}
+.forgetting-curve > p {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.forgetting-curve svg {
+  width: 100%;
+  max-height: 250px;
+  margin-top: 12px;
+  overflow: visible;
+}
+.forgetting-curve svg text {
+  font-size: 10px;
+  fill: #67796e;
+}
+.curve-axis {
+  stroke: #bbcbbf;
+  fill: none;
+}
+.curve-guide {
+  stroke: #e1e9e3;
+  stroke-dasharray: 3 4;
+}
+.curve-baseline {
+  stroke: #97a69c;
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 5 4;
+}
+.curve-repeated {
+  stroke: #287b56;
+  stroke-width: 2.5;
+  fill: none;
+  stroke-linejoin: round;
+}
+.curve-dot {
+  fill: #287b56;
+}
+.curve-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  font-size: 12px;
+  margin: 8px 0 14px;
+  color: #286a4c;
+}
+.curve-legend span:last-child {
+  color: #718276;
+}
+@media (max-width: 600px) {
+  .level-filter {
+    padding: 15px;
+  }
+  .level-tabs {
+    gap: 6px;
+  }
+  .level-tabs button {
+    padding: 6px 9px;
+  }
+  .forgetting-curve {
+    padding: 18px;
+  }
+}
 .list-footer {
   display: flex;
   justify-content: space-between;

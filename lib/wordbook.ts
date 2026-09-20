@@ -10,6 +10,37 @@ export const normalizeWord = (s: string) =>
     .toLowerCase();
 export const wordPattern = /^[a-z]+(?:[' -][a-z]+)*$/;
 const id = z.string().min(1).max(80);
+export const examLevels = [
+  "cet4",
+  "cet6",
+  "ielts",
+  "toefl",
+  "gre",
+  "postgraduate",
+] as const;
+export type ExamLevel = (typeof examLevels)[number];
+export const levelLabels: Record<ExamLevel, string> = {
+  cet4: "四级",
+  cet6: "六级",
+  ielts: "雅思",
+  toefl: "托福",
+  gre: "GRE",
+  postgraduate: "考研",
+};
+const levelsSchema = z
+  .array(z.enum(examLevels))
+  .max(examLevels.length)
+  .transform((v) => [...new Set(v)])
+  .default([]);
+const gradeSchema = z.enum(["again", "hard", "good", "easy"]);
+const timestamp = z.number().int().nonnegative().max(8_640_000_000_000_000);
+const reviewEntrySchema = z.object({
+  at: timestamp,
+  grade: gradeSchema,
+  stage: z.number().int().min(0).max(6),
+  dueAt: timestamp,
+});
+export const HISTORY_LIMIT = 20;
 export const folderSchema = z.object({
   id,
   name: z.string().trim().min(1).max(40),
@@ -29,11 +60,14 @@ export const wordSchema = z.object({
   note: z.string().max(4000).default(""),
   folderIds: z.array(id).min(1).max(50),
   starred: z.boolean().default(false),
-  createdAt: z.number().int().nonnegative(),
-  dueAt: z.number().int().nonnegative(),
+  createdAt: timestamp,
+  dueAt: timestamp,
   stage: z.number().int().min(0).max(6).default(0),
   lapses: z.number().int().nonnegative().default(0),
   reviews: z.number().int().nonnegative().default(0),
+  levels: levelsSchema,
+  lastReviewedAt: timestamp.nullable().default(null),
+  reviewHistory: z.array(reviewEntrySchema).max(HISTORY_LIMIT).default([]),
   affixes: z
     .array(z.string().regex(/^(?:[a-z]{1,12}-|-[a-z]{1,12})$/))
     .max(8)
@@ -62,6 +96,51 @@ export const bookSchema = z
 export type Word = z.infer<typeof wordSchema>;
 export type Folder = z.infer<typeof folderSchema>;
 export type Book = z.infer<typeof bookSchema>;
+export const BOOK_BYTE_LIMIT = 1_500_000;
+/** Reclaim only old review details when necessary. Word content and progress are never trimmed. */
+export function fitBookStorage(book: Book, maxBytes = BOOK_BYTE_LIMIT) {
+  const encoder = new TextEncoder();
+  let bytes = encoder.encode(JSON.stringify(book)).length;
+  if (bytes <= maxBytes) return { book, bytes, trimmed: 0 };
+  // Leave room for subsequent reviews, avoiding repeated pruning on every save.
+  const target = Math.floor(maxBytes * 0.9);
+  const entries = book.words
+    .flatMap((word, wordIndex) =>
+      word.reviewHistory.map((entry, entryIndex) => ({
+        wordIndex,
+        entryIndex,
+        at: entry.at,
+        bytes: encoder.encode(JSON.stringify(entry)).length,
+      })),
+    )
+    .sort((a, b) => a.at - b.at);
+  const removed = new Map<number, Set<number>>();
+  const remaining = book.words.map((w) => w.reviewHistory.length);
+  let trimmed = 0;
+  for (const entry of entries) {
+    if (bytes <= target) break;
+    const indexes = removed.get(entry.wordIndex) ?? new Set<number>();
+    indexes.add(entry.entryIndex);
+    removed.set(entry.wordIndex, indexes);
+    bytes -= entry.bytes + (remaining[entry.wordIndex] > 1 ? 1 : 0);
+    remaining[entry.wordIndex]--;
+    trimmed++;
+  }
+  const fitted = {
+    ...book,
+    words: book.words.map((word, i) =>
+      removed.has(i)
+        ? {
+            ...word,
+            reviewHistory: word.reviewHistory.filter(
+              (_, j) => !removed.get(i)!.has(j),
+            ),
+          }
+        : word,
+    ),
+  };
+  return { book: fitted, bytes, trimmed };
+}
 export function emptyBook(): Book {
   return {
     folders: [
@@ -93,12 +172,21 @@ export function newWord(
     stage: 0,
     lapses: 0,
     reviews: 0,
+    levels: [],
+    lastReviewedAt: null,
+    reviewHistory: [],
     ...fields,
   };
 }
 export const intervals = [0, 1, 3, 7, 14, 30, 60];
-export type Grade = "again" | "hard" | "good" | "easy";
-export function reviewWord(word: Word, grade: Grade, now = Date.now()): Word {
+export type Grade = z.infer<typeof gradeSchema>;
+export const gradeLabels: Record<Grade, string> = {
+  again: "忘了",
+  hard: "有点难",
+  good: "记住了",
+  easy: "很熟悉",
+};
+export function reviewPlan(word: Word, grade: Grade, now = Date.now()) {
   const stage =
     grade === "again"
       ? 0
@@ -112,13 +200,75 @@ export function reviewWord(word: Word, grade: Grade, now = Date.now()): Word {
       : (grade === "hard"
           ? Math.max(1, Math.floor(intervals[stage] / 2))
           : intervals[stage]) * 86400000;
+  return { stage, delay, dueAt: now + delay };
+}
+export function reviewWord(word: Word, grade: Grade, now = Date.now()): Word {
+  const { stage, dueAt } = reviewPlan(word, grade, now);
   return {
     ...word,
     stage,
-    dueAt: now + delay,
+    dueAt,
     lapses: word.lapses + (grade === "again" ? 1 : 0),
     reviews: word.reviews + 1,
+    lastReviewedAt: now,
+    reviewHistory: [
+      ...word.reviewHistory,
+      { at: now, grade, stage, dueAt },
+    ].slice(-HISTORY_LIMIT),
   };
+}
+export function matchesLevel(word: Word, level: string): boolean {
+  return (
+    !level ||
+    (level === "unclassified"
+      ? word.levels.length === 0
+      : word.levels.includes(level as ExamLevel))
+  );
+}
+export function addLevels(
+  words: Word[],
+  ids: string[],
+  levels: ExamLevel[],
+): Word[] {
+  const selected = new Set(ids);
+  return words.map((w) =>
+    selected.has(w.id)
+      ? { ...w, levels: [...new Set([...w.levels, ...levels])] }
+      : w,
+  );
+}
+/** Add missing words and associations; existing content and review progress win. */
+export function mergeBackup(book: Book, backup: Book): Book {
+  const next: Book = {
+    folders: [...book.folders],
+    words: book.words.map((w) => ({
+      ...w,
+      folderIds: [...w.folderIds],
+      levels: [...w.levels],
+    })),
+  };
+  const mapping = new Map<string, string>();
+  for (const f of backup.folders) {
+    let target = next.folders.find((x) => x.name === f.name);
+    if (!target) {
+      target = { id: crypto.randomUUID(), name: f.name };
+      next.folders.push(target);
+    }
+    mapping.set(f.id, target.id);
+  }
+  for (const w of backup.words) {
+    const existing = next.words.find(
+      (x) => normalizeWord(x.text) === normalizeWord(w.text),
+    );
+    const folders = w.folderIds.map((f) => mapping.get(f)!);
+    if (existing) {
+      existing.folderIds = [...new Set([...existing.folderIds, ...folders])];
+      existing.levels = [...new Set([...existing.levels, ...w.levels])];
+    } else {
+      next.words.push({ ...w, id: crypto.randomUUID(), folderIds: folders });
+    }
+  }
+  return bookSchema.parse(next);
 }
 export const affixMeanings: Record<string, string> = {
   "un-": "不；相反",
@@ -302,6 +452,7 @@ export function mergeWords(
   book: Book,
   items: Pick<Candidate, "text" | "definition">[],
   folderId: string,
+  levels: ExamLevel[] = [],
 ): Book {
   if (!book.folders.some((f) => f.id === folderId))
     throw new Error("请先选择文件夹");
@@ -312,12 +463,16 @@ export function mergeWords(
     if (!wordPattern.test(text)) continue;
     const existing = map.get(text);
     if (existing) {
+      existing.levels = [...new Set([...existing.levels, ...levels])];
       if (!existing.definition && item.definition)
         existing.definition = item.definition;
       if (!existing.folderIds.includes(folderId))
         existing.folderIds.push(folderId);
     } else {
-      const word = newWord(text, folderId, { definition: item.definition });
+      const word = newWord(text, folderId, {
+        definition: item.definition,
+        levels: [...levels],
+      });
       words.push(word);
       map.set(text, word);
     }

@@ -59,6 +59,31 @@ try {
   current = await r.json();
   const persisted = await read();
   assert.ok(persisted.book.words.some((w) => w.id === word.id));
+  const oldWord = persisted.book.words.find((w) => w.id === word.id);
+  assert.deepEqual(oldWord.levels, []);
+  assert.equal(oldWord.lastReviewedAt, null);
+  assert.deepEqual(oldWord.reviewHistory, []);
+  const { reviewWord, newWord, BOOK_BYTE_LIMIT } =
+    await import("../lib/wordbook.ts");
+  const reviewed = reviewWord(
+    { ...oldWord, levels: ["cet6", "ielts"] },
+    "good",
+    Date.now(),
+  );
+  r = await write(
+    {
+      ...current.book,
+      words: current.book.words.map((w) => (w.id === word.id ? reviewed : w)),
+    },
+    current.version,
+  );
+  assert.equal(r.status, 200);
+  current = await r.json();
+  const storedReview = (await read()).book.words.find((w) => w.id === word.id);
+  assert.deepEqual(storedReview.levels, ["cet6", "ielts"]);
+  assert.equal(storedReview.lastReviewedAt, reviewed.lastReviewedAt);
+  assert.equal(storedReview.dueAt, reviewed.dueAt);
+  assert.deepEqual(storedReview.reviewHistory, reviewed.reviewHistory);
   r = await write(original.book, original.version);
   assert.equal(r.status, 409, "Stale update must not overwrite new data");
   r = await write(
@@ -73,8 +98,51 @@ try {
   });
   assert.equal(r.status, 503);
   assert.equal((await r.json()).code, "NOT_CONFIGURED");
+  const largeWords = Array.from({ length: 1000 }, (_, index) => {
+    const suffix = [
+      Math.floor(index / 676),
+      Math.floor(index / 26) % 26,
+      index % 26,
+    ]
+      .map((n) => String.fromCharCode(97 + n))
+      .join("");
+    let w = newWord(`smokeword${suffix}`, current.book.folders[0].id, {
+      levels: ["cet6"],
+      note: "测试笔记",
+    });
+    for (let i = 0; i < 20; i++)
+      w = reviewWord(w, "good", 1_700_000_000_000 + i * 86400000);
+    return w;
+  });
+  r = await write({ ...current.book, words: largeWords }, current.version);
+  assert.equal(
+    r.status,
+    200,
+    "Full review histories should be trimmed rather than block saving",
+  );
+  current = await r.json();
+  assert.ok(current.historyTrimmed > 0);
+  assert.ok(
+    new TextEncoder().encode(JSON.stringify(current.book)).length <=
+      BOOK_BYTE_LIMIT,
+  );
+  const reduced = await read();
+  assert.equal(reduced.book.words.length, 1000);
+  assert.equal(
+    reduced.book.words[0].lastReviewedAt,
+    largeWords[0].lastReviewedAt,
+  );
+  assert.equal(reduced.book.words[0].reviews, 20);
+  r = await write(
+    {
+      ...reduced.book,
+      words: reduced.book.words.map((w) => reviewWord(w, "good", Date.now())),
+    },
+    reduced.version,
+  );
+  assert.equal(r.status, 200, "Reviewing continues after capacity management");
   console.log(
-    "PASS API: auth, CSRF origin, persistent save, version conflicts, validation, unconfigured Youdao.",
+    "PASS API: auth, CSRF origin, legacy defaults, persisted categories/review history, version conflicts, validation, capacity management, continued review, unconfigured Youdao.",
   );
 } finally {
   const latest = await read();
