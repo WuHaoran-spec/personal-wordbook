@@ -1,0 +1,15 @@
+{
+  "name": "cet6-cloze-point-practice",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "test": "node qa/data-check.cjs && node qa/content-check.mjs",
+    "build": "node build.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource-variable/noto-sans-sc": "5.3.0"
+  }
+}

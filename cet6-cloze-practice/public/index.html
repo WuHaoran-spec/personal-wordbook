@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#A53235"><meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="六级选词填空点对点练习：词义辨析、例句、真题练习与每日词缀背诵。">
+  <title>六级选词填空点对点练习</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a href="#practice" class="skip-link">跳到练习</a>
+  <aside class="sidebar">
+    <a class="brand" href="#home" aria-label="六级选词填空点对点练习首页"><span class="brand-icon" aria-hidden="true">点</span><span>点对点<small>六级选词填空</small></span></a>
+    <div class="side-label">练习与复习</div>
+    <nav aria-label="主要导航">
+      <button class="nav-item active" data-nav="practice"><span data-icon="layers"></span>语境短练<span class="nav-dot"></span></button>
+      <button class="nav-item" data-nav="exam"><span data-icon="book"></span>真题练习</button>
+      <button class="nav-item" data-nav="daily"><span data-icon="chart"></span>每日背词</button>
+      <button class="nav-item" data-nav="library"><span data-icon="search"></span>词汇表</button>
+      <button class="nav-item" data-nav="review"><span data-icon="repeat"></span>错词复习<span class="nav-count" id="nav-review-count">0</span></button>
+    </nav>
+    <div class="side-note"><span class="tiny-line"></span><p>先判断词性，<br>再辨词义与搭配。</p><span>选完答案，记得看解析。</span></div>
+    <div class="side-footer"><div class="avatar"><span data-icon="book"></span></div><div>我的练习室<small><span data-icon="device"></span> 本机学习记录</small></div></div>
+  </aside>
+  <div class="page">
+    <header class="topbar"><div><span class="breadcrumb">我的练习室</span><span class="slash">/</span><strong id="page-label">语境短练</strong></div><div class="topbar-right"><span class="private-pill"><span data-icon="lock"></span>仅自己可访问</span><span class="edition">CET-6 · 选词填空</span></div></header>
+    <main id="home">
+      <section class="overview" aria-labelledby="welcome-title">
+        <div class="intro"><div><div class="eyebrow">词义 · 语境 · 搭配</div><h1 id="welcome-title">六级选词填空点对点练习</h1><p>查清词义，在句子中辨析，再回到真题练习。</p></div><span class="intro-note">练习记录自动保存</span></div>
+        <div class="overview-grid">
+          <div class="hero-card"><div class="hero-content"><span class="hero-label">语境辨义</span><h2>先练 5 题</h2><p>比较易混词，找到句子中的判断依据。<br>每题都有中文翻译和选项解析。</p><button id="daily-start" class="btn btn-cream">开始语境短练 <span data-icon="arrow"></span></button><span class="hero-meta">原创练习 <i></i> 可反复练习</span></div><div class="type-art" aria-hidden="true"><div class="study-line"><span>01</span><strong>词性</strong><small>这个位置需要什么词？</small></div><div class="study-line"><span>02</span><strong>词义</strong><small>哪种意思符合上下文？</small></div><div class="study-line"><span>03</span><strong>搭配</strong><small>能与前后的词连用吗？</small></div></div></div>
+          <div class="progress-card"><div class="card-top"><h3>练习记录</h3><span data-icon="chart"></span></div><div class="progress-middle"><div class="progress-ring" id="progress-ring"><div><strong id="accuracy">—</strong><span>累计正确率</span></div></div><p id="progress-message">完成练习后，<br>在这里查看记录。</p></div><div class="stat-grid"><div><strong id="stat-attempts">0</strong><span>已练题次</span></div><div><strong id="stat-words">0</strong><span>练过单词</span></div><div><strong id="stat-review">0</strong><span>待巩固词</span></div></div><div class="local-note"><span data-icon="device"></span>学习记录保存在当前浏览器</div></div>
+        </div>
+      </section>
+      <section class="practice-section" id="practice" aria-labelledby="practice-heading">
+        <div class="section-heading"><div><span class="section-number">01</span><h2 id="practice-heading">语境短练</h2><span class="section-subtitle" id="practice-subtitle">先读句子，再选最贴切的词</span></div><button class="text-button" id="new-session"><span data-icon="shuffle"></span>换一组</button></div>
+        <div class="practice-grid"><div class="exercise-card" id="exercise" aria-live="polite"></div><aside class="guide-card"><div class="guide-label"><span data-icon="book"></span> 答题提示</div><h3>三个判断依据</h3><ol><li><span>01</span><div><strong>看空格的位置</strong><p>先判断需要动词、名词，还是修饰语。</p></div></li><li><span>02</span><div><strong>找前后的搭配</strong><p>留意介词、宾语，以及转折和因果。</p></div></li><li><span>03</span><div><strong>把词义放回句子</strong><p>意思相近，也要比较动作和语气。</p></div></li></ol><div class="guide-bottom">词缀提供方向，语境决定词义。</div></aside></div>
+      </section>
+      <section class="library-section" id="library" aria-labelledby="library-heading">
+        <div class="section-heading"><div><span class="section-number">04</span><h2 id="library-heading">词汇表</h2><span class="section-subtitle">按词缀、词性和首字母查词</span></div><span class="count-badge" id="total-words">示例词库</span></div>
+        <div class="library-panel"><div class="filter-top"><div class="search-wrap"><span data-icon="search"></span><input id="word-search" placeholder="搜索单词或中文释义…" aria-label="搜索单词或中文释义" type="search"></div><label class="select-wrap"><span>词性</span><select id="pos-filter" aria-label="筛选词性"><option value="all">全部词性</option><option value="v.">动词 v.</option><option value="n.">名词 n.</option><option value="adj.">形容词 adj.</option><option value="adv.">副词 adv.</option></select></label><label class="select-wrap"><span>首字母</span><select id="letter-filter" aria-label="筛选首字母"><option value="all">全部字母</option></select></label></div><div class="affix-row"><span class="filter-label">词缀</span><div class="affix-buttons" id="affix-buttons"><button class="chip selected" data-affix="all" aria-pressed="true">全部</button><button class="chip" data-affix="en" aria-pressed="false">en-</button><button class="chip" data-affix="em" aria-pressed="false">em-</button><button class="chip" data-affix="im" aria-pressed="false">im-</button><button class="chip" data-affix="re" aria-pressed="false">re-</button><button class="chip" data-affix="de" aria-pressed="false">de-</button><button class="chip" data-affix="other" aria-pressed="false">其他</button></div><button class="text-button reset-filter" id="reset-filters">重置筛选</button></div><div class="filter-context" id="filter-context">按词缀的实际构词含义分组；相同开头不一定是同一个词缀。</div></div>
+        <div class="word-toolbar"><span id="result-count"></span><div><button class="text-button" id="toggle-meanings" aria-pressed="false"><span data-icon="eye"></span>隐藏释义</button><button class="btn btn-small" id="train-filtered">练习这些词 <span data-icon="arrow"></span></button></div></div><div class="word-grid" id="word-grid"></div>
+        <div class="source-note"><span data-icon="info"></span><p>词卡附词典链接，中文释义按当前语境整理；例句和语境短练为原创。真题在“真题练习”中单独标明出处。词缀帮助记忆，具体词义仍需结合整个单词。</p></div>
+      </section>
+      <footer class="footer"><span><b>六级选词填空点对点练习</b></span><span>学习记录保存在当前浏览器</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="./app.js"></script>
+</body></html>
