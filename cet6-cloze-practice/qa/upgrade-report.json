@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "checks": [
+    "CST midnight, five-family rotation, second round and non-inflating spaced reviews",
+    "38 word cards, 76 original questions and four valid 15-choice/10-answer sets",
+    "reveal gating, six-card completion, weak-only retry, due reviews and refresh persistence",
+    "exam selection, incomplete gating, unique choices, safe local passage persistence/clearing, scoring/feedback/retry and exam-word learning",
+    "combined em/POS/initial/Chinese filtering, lexical sense detail and original short-practice regression",
+    "safe external links, mobile 390px interaction, desktop/mobile no overflow or JavaScript errors"
+  ],
+  "errors": [],
+  "screenshots": [
+    "upgrade-desktop-daily.png",
+    "upgrade-desktop-exam.png",
+    "upgrade-mobile-daily.png",
+    "upgrade-mobile-exam.png"
+  ]
+}
